@@ -1,0 +1,143 @@
+---
+title: "CPS Performance Task"
+output: html_notebook
+---
+
+```{r, warning=FALSE}
+library(foreign)
+library(tidyverse)
+library(readxl)
+
+dat <- read_xlsx("./Performance Task Allstu RFP.xlsx", sheet = "Transportation Data", col_types = rep("text", 30))
+ridership_codes <- read_xlsx("./Performance Task Allstu RFP.xlsx", sheet = "Ridership Codes", col_types = rep("text", 2))
+transit_types <- read_xlsx("./Performance Task Allstu RFP.xlsx", sheet = "Trans Types", col_types = rep("text", 2))
+
+dat <- dat %>% 
+  rename(
+    "school_code" = 1, 
+    "school_name" = 2, 
+    "router" = 3, 
+    "zone" = 4, 
+    "student_id_number" = 5, 
+    "last_name" = 6, 
+    "first_name" = 7, 
+    "pickup_location_type" = 8, 
+    "transportation_type_code" = 9, 
+    "pickup_stop_description" = 10, 
+    "pickup_location" = 11, 
+    "corner_location" = 12, 
+    "corner_zip_code" = 13, 
+    "stop_id" = 14,
+    "run_id" = 15, 
+    "updated_at" = 16, 
+    "aide_required" = 17, 
+    "phone_number" = 18, 
+    "student_trip_requirement_code" = 19, 
+    "disability_code" = 20, 
+    "route_id" = 21, 
+    "bus_number" = 22, 
+    "bell_time" = 23, 
+    "trip_direction" = 24, 
+    "stop_position" = 25, 
+    "run_description" = 26, 
+    "nurse_required" = 27, 
+    "ac_required" = 28, 
+    "carseat_or_harness_required" = 29, 
+    "can_be_dropped_without_guardian" = 30, 
+  ) %>% 
+  left_join(ridership_codes, by = c("student_trip_requirement_code" = "user_elgcd")) %>% 
+  rename(
+    "student_trip_requirement" = 31
+  ) %>% 
+  left_join(transit_types, by = c("transportation_type_code" = "utrans_typ")) %>% 
+  rename(
+    "transportation_type" = 32
+  ) %>% 
+  select(
+    school_code, 
+    school_name, 
+    zone, 
+    student_id_number, 
+    last_name, 
+    first_name, 
+    pickup_location_type, 
+    transportation_type, 
+    pickup_stop_description, 
+    stop_id, 
+    run_id, 
+    student_trip_requirement, 
+    disability_code, 
+    bell_time, 
+    trip_direction, 
+    stop_position,
+    aide_required, 
+    nurse_required, 
+    ac_required, 
+    carseat_or_harness_required, 
+    can_be_dropped_without_guardian
+  ) %>% 
+  mutate(
+    zone = as.factor(zone),
+    pickup_location_type = as.factor(pickup_location_type),
+    transportation_type = as.factor(transportation_type),
+    disability_code = as.factor(disability_code),
+    stop_position = as.numeric(stop_position),
+    aide_required = as.factor(aide_required), 
+    nurse_required = as.factor(nurse_required), 
+    ac_required = as.factor(ac_required), 
+    carseat_or_harness_required = as.factor(carseat_or_harness_required), 
+    can_be_dropped_without_guardian = as.factor(can_be_dropped_without_guardian)
+  ) %>%
+  mutate(
+    aide_required = !is.na(aide_required),
+    nurse_required = !is.na(nurse_required),
+    ac_required = !is.na(ac_required),
+    carseat_or_harness_required = !is.na(carseat_or_harness_required),
+    no_guardian_allowed = !is.na(can_be_dropped_without_guardian)
+  ) %>% 
+  select(
+    -can_be_dropped_without_guardian
+  )
+```
+
+```{r}
+summary(dat)
+```
+```{r}
+View(dat)
+```
+
+```{r}
+grouped_runs_by_bell_time <- dat %>% 
+  mutate(
+    run_id_school = str_extract(run_id, "[0-9]+\\.") %>% gsub("\\.", "", .), 
+    run_id_run_code = str_extract(run_id, "\\.[0-9]+") %>% gsub("\\.", "", .)
+  ) %>% 
+  group_by(run_id) %>% 
+  summarise(
+    min_bell_time = min(bell_time), 
+    max_bell_time = max(bell_time), 
+    run_id_school = first(run_id_school), 
+    run_id_run_code = first(run_id_run_code)
+  ) %>% 
+  mutate(
+    run_type_code = str_sub(run_id_run_code, start = 1, end = 1), 
+    run_type_student_code = str_sub(run_id_run_code, start = 2, end = 3), 
+    run_type = case_when(
+      run_type_code == "0" ~ "To school", 
+      run_type_code == "1" ~ "From school",
+      run_type_code == "2" ~ "From school midday",
+      run_type_code == "3" ~ "To school midday",
+      run_type_code == "4" ~ "To school shared run",
+      run_type_code == "5" ~ "From school shared run",
+      TRUE ~ as.character(run_type_code)
+    ), 
+    students_transported = case_when(
+      as.numeric(run_type_student_code) <= 29 ~ "General education", 
+      as.numeric(run_type_student_code) <= 49 ~ "STLS", 
+      as.numeric(run_type_student_code) <= 89 ~ "Special education", 
+      TRUE ~ as.character(run_type_student_code)
+    )
+  )
+```
+
